@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Live POS Dashboard (Kenya)</title>
+    <meta charset="utf-8" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #fafafa; margin: 30px; }
+        h2 { color: #333; margin-bottom: 0; }
+        #charts { display: flex; gap: 40px; flex-wrap: wrap; margin-top: 20px; }
+        canvas { background: white; border-radius: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); padding: 10px; }
+        table { border-collapse: collapse; width: 100%; margin-top: 30px; background: white; border-radius: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+        th, td { padding: 8px 10px; border-bottom: 1px solid #eee; text-align: left; }
+        th { background: #007bff; color: white; }
+    </style>
+</head>
+<body>
+    <h2>🧾 Live POS Transactions — Kenya</h2>
+    <p>Updating every second...</p>
+
+    <div id="charts">
+        <canvas id="revenueChart" width="400" height="250"></canvas>
+        <canvas id="categoryChart" width="400" height="250"></canvas>
+    </div>
+
+    <h3>Recent Transactions (last 10)</h3>
+    <table id="data-table">
+        <thead>
+            <tr>
+                <th>Time</th>
+                <th>Customer</th>
+                <th>Age</th>
+                <th>Gender</th>
+                <th>County</th>
+                <th>Product</th>
+                <th>Brand</th>
+                <th>Revenue (KSh)</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+    <script>
+        const source = new EventSource("/stream");
+        const tbody = document.querySelector("#data-table tbody");
+        const MAX_ROWS = 10;
+        const recent = [];
+
+        // Initialize charts
+        const ctxRev = document.getElementById('revenueChart').getContext('2d');
+        const revenueChart = new Chart(ctxRev, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Revenue Over Time (KSh)',
+                    data: [],
+                    borderColor: '#007bff',
+                    fill: false,
+                    tension: 0.1
+                }]
+            },
+            options: { responsive: true, scales: { y: { beginAtZero: true } } }
+        });
+
+        const ctxCat = document.getElementById('categoryChart').getContext('2d');
+        const categoryChart = new Chart(ctxCat, {
+            type: 'bar',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Revenue by Category',
+                    data: [],
+                    backgroundColor: '#28a745'
+                }]
+            },
+            options: { responsive: true, scales: { y: { beginAtZero: true } } }
+        });
+
+        const categoryRevenue = {};
+
+        source.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+
+            // Update rolling table
+            const row = document.createElement("tr");
+            row.innerHTML = `
+                <td>${data.Timestamp}</td>
+                <td>${data.CustomerName}</td>
+                <td>${data.Age || ''}</td>
+                <td>${data.Gender}</td>
+                <td>${data.County}</td>
+                <td>${data.Product}</td>
+                <td>${data.Brand}</td>
+                <td>${data.Revenue.toLocaleString()}</td>
+            `;
+            tbody.prepend(row);
+            if (tbody.rows.length > MAX_ROWS) tbody.deleteRow(-1);
+
+            // Track last 10 for graph
+            recent.push(data);
+            if (recent.length > MAX_ROWS) recent.shift();
+
+            // Update revenue trend chart
+            revenueChart.data.labels.push(data.Timestamp.split(' ')[1]);
+            revenueChart.data.datasets[0].data.push(data.Revenue);
+            if (revenueChart.data.labels.length > MAX_ROWS) {
+                revenueChart.data.labels.shift();
+                revenueChart.data.datasets[0].data.shift();
+            }
+            revenueChart.update();
+
+            // Update revenue per category
+            categoryRevenue[data.Category] = (categoryRevenue[data.Category] || 0) + data.Revenue;
+            categoryChart.data.labels = Object.keys(categoryRevenue);
+            categoryChart.data.datasets[0].data = Object.values(categoryRevenue);
+            categoryChart.update();
+        };
+    </script>
+</body>
+</html>
