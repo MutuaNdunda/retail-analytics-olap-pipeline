@@ -1,121 +1,294 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
+
 <head>
-    <title>Live POS Dashboard (Kenya)</title>
-    <meta charset="utf-8" />
+    <meta charset="utf-8">
+    <title>TechMart Kenya</title>
+
+    <!-- Bootstrap + Chart.js -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #fafafa; margin: 30px; }
-        h2 { color: #333; margin-bottom: 0; }
-        #charts { display: flex; gap: 40px; flex-wrap: wrap; margin-top: 20px; }
-        canvas { background: white; border-radius: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); padding: 10px; }
-        table { border-collapse: collapse; width: 100%; margin-top: 30px; background: white; border-radius: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
-        th, td { padding: 8px 10px; border-bottom: 1px solid #eee; text-align: left; }
-        th { background: #007bff; color: white; }
+        body {
+            background: #f8f9fa;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        h2 {
+            color: #333;
+            margin: 20px 0 10px;
+        }
+
+        .kpi-card {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            padding: 15px;
+        }
+
+        .kpi-value {
+            font-size: 1.6rem;
+            font-weight: bold;
+            color: #007bff;
+        }
+
+        canvas {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+            padding: 10px;
+            max-width: 320px;
+            max-height: 220px;
+        }
+
+        table {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+        }
+
+        th {
+            background: #007bff;
+            color: white;
+        }
     </style>
 </head>
-<body>
-    <h2>🧾 Live POS Transactions — Kenya</h2>
-    <p>Updating every second...</p>
 
-    <div id="charts">
-        <canvas id="revenueChart" width="400" height="250"></canvas>
-        <canvas id="categoryChart" width="400" height="250"></canvas>
+<body class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            <h2>TechMart Kenya Live Sales</h2>
+            <p class="text-muted">Auto-updating every second (KPIs for last 5 minutes)</p>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <button id="toggleBtn" class="btn btn-success">▶️ Start Streaming</button>
+            <button id="dbBtn" class="btn btn-primary">💾 Start DB Stream</button>
+        </div>
     </div>
 
-    <h3>Recent Transactions (last 10)</h3>
-    <table id="data-table">
+    <!-- KPI Tiles -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-2 col-sm-4">
+            <div class="kpi-card">
+                <div>Total Revenue</div>
+                <div class="kpi-value" id="kpiRevenue">0</div>
+                <small>KSh (5 min)</small>
+            </div>
+        </div>
+        <div class="col-md-2 col-sm-4">
+            <div class="kpi-card">
+                <div>Transactions</div>
+                <div class="kpi-value" id="kpiCount">0</div>
+                <small>Last 5 min</small>
+            </div>
+        </div>
+        <div class="col-md-2 col-sm-4">
+            <div class="kpi-card">
+                <div>Avg Basket (KSh)</div>
+                <div class="kpi-value" id="kpiAvg">0</div>
+                <small>Revenue / Txn</small>
+            </div>
+        </div>
+        <div class="col-md-2 col-sm-4">
+            <div class="kpi-card">
+                <div>Top Category</div>
+                <div class="kpi-value" id="kpiTopCat">–</div>
+                <small>By revenue</small>
+            </div>
+        </div>
+        <div class="col-md-2 col-sm-4">
+            <div class="kpi-card">
+                <div>Top County</div>
+                <div class="kpi-value" id="kpiTopCounty">–</div>
+                <small>By sales</small>
+            </div>
+        </div>
+        <div class="col-md-2 col-sm-4">
+            <div class="kpi-card">
+                <div>Active Genders</div>
+                <div class="kpi-value" id="kpiGenderSplit">–</div>
+                <small>Male / Female</small>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="d-flex flex-wrap gap-4 justify-content-start mb-4">
+        <canvas id="revenueChart"></canvas>
+        <canvas id="categoryChart"></canvas>
+        <canvas id="genderChart"></canvas>
+        <canvas id="countyChart"></canvas>
+    </div>
+
+    <!-- Live Table -->
+    <h4 class="mt-4">Recent Transactions (Last 10)</h4>
+    <table class="table table-sm">
         <thead>
             <tr>
+                <th>Txn ID</th>
                 <th>Time</th>
                 <th>Customer</th>
                 <th>Age</th>
                 <th>Gender</th>
                 <th>County</th>
+                <th>Store Name</th>
                 <th>Product</th>
-                <th>Brand</th>
+                <th>Category</th>
+                <th>Units</th>
+                <th>Discount</th>
+                <th>Payment</th>
                 <th>Revenue (KSh)</th>
             </tr>
         </thead>
-        <tbody></tbody>
+        <tbody id="txn-body"></tbody>
     </table>
 
     <script>
-        const source = new EventSource("/stream");
-        const tbody = document.querySelector("#data-table tbody");
         const MAX_ROWS = 10;
-        const recent = [];
+        const WINDOW_MS = 5 * 60 * 1000;
+        const txns = [];
+        let source = null;
+        let dbSource = null;
 
-        // Initialize charts
-        const ctxRev = document.getElementById('revenueChart').getContext('2d');
-        const revenueChart = new Chart(ctxRev, {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: 'Revenue Over Time (KSh)',
-                    data: [],
-                    borderColor: '#007bff',
-                    fill: false,
-                    tension: 0.1
-                }]
-            },
+        const toggleBtn = document.getElementById("toggleBtn");
+        const dbBtn = document.getElementById("dbBtn");
+        const tbody = document.getElementById("txn-body");
+
+        // === Charts ===
+        const revenueChart = new Chart(document.getElementById("revenueChart"), {
+            type: "line",
+            data: { labels: [], datasets: [{ label: "Revenue (KSh)", data: [], borderColor: "#007bff", fill: false, tension: 0.2 }] },
             options: { responsive: true, scales: { y: { beginAtZero: true } } }
         });
 
-        const ctxCat = document.getElementById('categoryChart').getContext('2d');
-        const categoryChart = new Chart(ctxCat, {
-            type: 'bar',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: 'Revenue by Category',
-                    data: [],
-                    backgroundColor: '#28a745'
-                }]
-            },
+        const categoryChart = new Chart(document.getElementById("categoryChart"), {
+            type: "bar",
+            data: { labels: [], datasets: [{ label: "Revenue by Category", data: [], backgroundColor: "#28a745" }] },
             options: { responsive: true, scales: { y: { beginAtZero: true } } }
         });
 
-        const categoryRevenue = {};
+        const genderChart = new Chart(document.getElementById("genderChart"), {
+            type: "doughnut",
+            data: { labels: ["Male", "Female"], datasets: [{ data: [0, 0], backgroundColor: ["#007bff", "#ff6384"] }] },
+            options: { responsive: true, plugins: { legend: { position: "bottom" } } }
+        });
 
-        source.onmessage = function(event) {
-            const data = JSON.parse(event.data);
+        const countyChart = new Chart(document.getElementById("countyChart"), {
+            type: "bar",
+            data: { labels: [], datasets: [{ label: "Revenue by County", data: [], backgroundColor: "#ffc107" }] },
+            options: { responsive: true, scales: { y: { beginAtZero: true } } }
+        });
 
-            // Update rolling table
+        // === Handle Each Transaction ===
+        function handleTxn(d) {
+            d._ts = Date.now();
+            txns.push(d);
+            const cutoff = Date.now() - WINDOW_MS;
+            while (txns.length && txns[0]._ts < cutoff) txns.shift();
+
             const row = document.createElement("tr");
             row.innerHTML = `
-                <td>${data.Timestamp}</td>
-                <td>${data.CustomerName}</td>
-                <td>${data.Age || ''}</td>
-                <td>${data.Gender}</td>
-                <td>${data.County}</td>
-                <td>${data.Product}</td>
-                <td>${data.Brand}</td>
-                <td>${data.Revenue.toLocaleString()}</td>
-            `;
+        <td>${d.TransactionID}</td>
+        <td>${d.Timestamp}</td>
+        <td>${d.CustomerName}</td>
+        <td>${d.Age ?? ""}</td>
+        <td>${d.Gender}</td>
+        <td>${d.County}</td>
+        <td>${d.StoreName}</td>
+        <td>${d.Product}</td>
+        <td>${d.Category}</td>
+        <td>${d.UnitsSold}</td>
+        <td>${(d.Discount * 100).toFixed(0)}%</td>
+        <td>${d.PaymentMethod}</td>
+        <td>${d.Revenue.toLocaleString()}</td>`;
             tbody.prepend(row);
             if (tbody.rows.length > MAX_ROWS) tbody.deleteRow(-1);
 
-            // Track last 10 for graph
-            recent.push(data);
-            if (recent.length > MAX_ROWS) recent.shift();
+            const totalRevenue = txns.reduce((s, x) => s + x.Revenue, 0);
+            const txnCount = txns.length;
+            const avg = txnCount ? (totalRevenue / txnCount).toFixed(0) : 0;
+            const byCat = {}, byCounty = {}, genderCount = { Male: 0, Female: 0 };
 
-            // Update revenue trend chart
-            revenueChart.data.labels.push(data.Timestamp.split(' ')[1]);
-            revenueChart.data.datasets[0].data.push(data.Revenue);
-            if (revenueChart.data.labels.length > MAX_ROWS) {
+            txns.forEach(x => {
+                byCat[x.Category] = (byCat[x.Category] || 0) + x.Revenue;
+                byCounty[x.County] = (byCounty[x.County] || 0) + x.Revenue;
+                if (x.Gender in genderCount) genderCount[x.Gender]++;
+            });
+
+            const topCat = Object.entries(byCat).sort((a, b) => b[1] - a[1])[0]?.[0] || "–";
+            const topCounty = Object.entries(byCounty).sort((a, b) => b[1] - a[1])[0]?.[0] || "–";
+
+            document.getElementById("kpiRevenue").textContent = totalRevenue.toLocaleString();
+            document.getElementById("kpiCount").textContent = txnCount;
+            document.getElementById("kpiAvg").textContent = avg;
+            document.getElementById("kpiTopCat").textContent = topCat;
+            document.getElementById("kpiTopCounty").textContent = topCounty;
+            document.getElementById("kpiGenderSplit").textContent = `${genderCount.Male}/${genderCount.Female}`;
+
+            revenueChart.data.labels.push(d.Timestamp.split(" ")[1]);
+            revenueChart.data.datasets[0].data.push(d.Revenue);
+            if (revenueChart.data.labels.length > 10) {
                 revenueChart.data.labels.shift();
                 revenueChart.data.datasets[0].data.shift();
             }
             revenueChart.update();
 
-            // Update revenue per category
-            categoryRevenue[data.Category] = (categoryRevenue[data.Category] || 0) + data.Revenue;
-            categoryChart.data.labels = Object.keys(categoryRevenue);
-            categoryChart.data.datasets[0].data = Object.values(categoryRevenue);
+            categoryChart.data.labels = Object.keys(byCat);
+            categoryChart.data.datasets[0].data = Object.values(byCat);
             categoryChart.update();
+
+            genderChart.data.datasets[0].data = [genderCount.Male, genderCount.Female];
+            genderChart.update();
+
+            countyChart.data.labels = Object.keys(byCounty);
+            countyChart.data.datasets[0].data = Object.values(byCounty);
+            countyChart.update();
+        }
+
+        // === Start/Stop Streaming ===
+        toggleBtn.onclick = () => {
+            if (source) {
+                source.close();
+                source = null;
+                toggleBtn.classList.replace("btn-danger", "btn-success");
+                toggleBtn.textContent = "▶️ Start Streaming";
+            } else {
+                source = new EventSource("/stream");
+                source.onmessage = (event) => handleTxn(JSON.parse(event.data));
+                toggleBtn.classList.replace("btn-success", "btn-danger");
+                toggleBtn.textContent = "⏹ Stop Streaming";
+            }
         };
+
+        // === Start/Stop DB Streaming ===
+        dbBtn.onclick = async () => {
+            const pin = prompt("Enter Admin PIN:");
+            if (!pin) return;
+
+            const endpoint = dbBtn.textContent.includes("Start")
+                ? "/start_db_stream"
+                : "/stop_db_stream";
+
+            const res = await fetch(endpoint, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ pin })
+            });
+            const data = await res.json();
+            alert(data.status || data.error);
+
+            if (endpoint === "/start_db_stream" && !data.error) {
+                dbBtn.classList.replace("btn-primary", "btn-danger");
+                dbBtn.textContent = "⏹ Stop DB Stream";
+            } else {
+                dbBtn.classList.replace("btn-danger", "btn-primary");
+                dbBtn.textContent = "💾 Start DB Stream";
+            }
+        };
+
     </script>
 </body>
+
 </html>
